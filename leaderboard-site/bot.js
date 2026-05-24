@@ -23,7 +23,7 @@ const {
   VERIFY_CHANNEL_ID
 } = process.env;
 
-const submitChannelId = SUBMIT_CHANNEL_ID || "1492959107236368394";
+const submitChannelId = SUBMIT_CHANNEL_ID || "1508121179880427711";
 const verifyChannelId = VERIFY_CHANNEL_ID || "1508121386286186616";
 
 if (
@@ -201,6 +201,36 @@ const commands = [
     .setDescription("Approve a submitted run")
     .addIntegerOption(o =>
       o.setName("id").setDescription("Run ID").setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("modif")
+    .setDescription("Modify a submitted run by ID")
+    .addIntegerOption(o =>
+      o.setName("id").setDescription("Run ID").setRequired(true)
+    )
+    .addStringOption(o =>
+      o.setName("player").setDescription("New player name")
+    )
+    .addStringOption(o =>
+      o.setName("video").setDescription("New video URL")
+    )
+    .addStringOption(o =>
+      o.setName("date").setDescription("New run date")
+    )
+    .addStringOption(o =>
+      o.setName("browser").setDescription("New browser")
+    )
+    .addStringOption(o =>
+      o
+        .setName("time")
+        .setDescription("New run time like 2h42m57s or 2:42:57.367")
+    )
+    .addStringOption(o =>
+      o.setName("version").setDescription("New game version")
+    )
+    .addStringOption(o =>
+      o.setName("comment").setDescription("New comment")
     ),
 
   new SlashCommandBuilder()
@@ -468,9 +498,92 @@ client.on("interactionCreate", async (i) => {
     });
   }
 
-  /* =======================
-     DELETE PLAYER
-  ======================= */
+  /* =======================     MODIFY RUN
+======================= */
+if (i.commandName === "modif") {
+  await i.deferReply({ ephemeral: true });
+
+  const id = i.options.getInteger("id");
+  const player = i.options.getString("player");
+  const video = i.options.getString("video");
+  const date = i.options.getString("date");
+  const browser = i.options.getString("browser");
+  const timeInput = i.options.getString("time");
+  const version = i.options.getString("version");
+  const comment = i.options.getString("comment");
+
+  const updatePayload = {};
+
+  if (player) updatePayload.player = player;
+  if (video) updatePayload.video = video;
+  if (date) updatePayload.date = date;
+  if (browser) updatePayload.browser = browser;
+  if (version) updatePayload.version = version;
+  if (comment) updatePayload.comment = comment;
+
+  if (timeInput) {
+    const parsedTime = parseTimeInput(timeInput);
+
+    if (!parsedTime) {
+      return i.editReply(
+        "❌ Format de temps invalide. Utilisez par exemple : 2h42m57s ou 2:42:57.367"
+      );
+    }
+
+    updatePayload.time = parsedTime.formatted;
+    updatePayload.time_precise = parsedTime.formatted;
+  }
+
+  if (Object.keys(updatePayload).length === 0) {
+    return i.editReply("❌ Vous devez fournir au moins un champ à modifier.");
+  }
+
+  const { data: existingRun, error: fetchErr } = await supabase
+    .from("runs")
+    .select("id, verified_by")
+    .eq("id", id)
+    .single();
+
+  if (fetchErr || !existingRun) {
+    return i.editReply(`❌ Run ID ${id} introuvable.`);
+  }
+
+  const { error: updateErr } = await supabase
+    .from("runs")
+    .update(updatePayload)
+    .eq("id", id);
+
+  if (updateErr) {
+    return i.editReply(`❌ DB error: ${updateErr.message}`);
+  }
+
+  // recalcul leaderboard si run déjà validée
+  if (existingRun.verified_by) {
+    const { data: allApproved } = await supabase
+      .from("runs")
+      .select("id, time, time_precise")
+      .not("verified_by", "is", null);
+
+    const rowsWithMs = (allApproved || []).map(r => {
+      const parsed = parseTimeInput(r.time_precise || r.time || "");
+      return {
+        id: r.id,
+        ms: parsed ? parsed.value : 0
+      };
+    });
+
+    rowsWithMs.sort((a, b) => a.ms - b.ms);
+
+    for (let idx = 0; idx < rowsWithMs.length; idx++) {
+      await supabase
+        .from("runs")
+        .update({ place: idx + 1 })
+        .eq("id", rowsWithMs[idx].id);
+    }
+  }
+
+  return i.editReply(`✅ Run ${id} mise à jour avec succès.`);
+}
   if (i.commandName === "delete_player") {
     const player = i.options.getString("player");
     const id = i.options.getInteger("id");

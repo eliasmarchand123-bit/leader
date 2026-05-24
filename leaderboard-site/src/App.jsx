@@ -181,6 +181,7 @@ export default function LeaderboardSite() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState(null);
+  const [showSubmitForm, setShowSubmitForm] = useState(false);
 
   const lang = t[language];
 
@@ -272,14 +273,12 @@ export default function LeaderboardSite() {
               >
                 {language.toUpperCase()}
               </button>
-              <a
-                href="https://discord.gg/example"
-                target="_blank"
-                rel="noreferrer"
+              <button
+                onClick={() => setShowSubmitForm(true)}
                 className="inline-flex items-center justify-center rounded-2xl bg-yellow-400 px-5 py-3 text-sm font-bold text-black transition hover:bg-yellow-300"
               >
                 {lang.submit}
-              </a>
+              </button>
             </div>
           </div>
 
@@ -310,6 +309,15 @@ export default function LeaderboardSite() {
             ))}
           </div>
         </details>
+
+        {showSubmitForm ? (
+          <div className="mb-8 rounded-3xl border border-zinc-800 bg-zinc-900/90 p-6">
+            <h2 className="text-xl font-semibold text-white mb-4">Submit run (site)</h2>
+            <SubmitForm
+              onClose={() => setShowSubmitForm(false)}
+            />
+          </div>
+        ) : null}
 
         {error ? (
           <div className="mb-6 rounded-3xl border border-red-500/30 bg-red-500/10 p-5 text-sm text-red-200">{error}</div>
@@ -451,5 +459,77 @@ export default function LeaderboardSite() {
         </div>
       </div>
     </div>
+  );
+}
+
+function SubmitForm({ onClose }) {
+  const [player, setPlayer] = useState("");
+  const [video, setVideo] = useState("");
+  const [date, setDate] = useState("");
+  const [browser, setBrowser] = useState("");
+  const [time, setTime] = useState("");
+  const [version, setVersion] = useState("");
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!player || !time || !video) {
+      setError("Player, time and video are required");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { data, error: insertErr } = await supabase.from("runs").insert([
+        {
+          player: player.trim(),
+          video: video.trim(),
+          date: date.trim() || null,
+          browser: browser.trim() || null,
+          place: null,
+          time: time.trim(),
+          time_precise: time.trim(),
+          version: version.trim() || null,
+          comment: comment.trim() || null,
+          submitted_by: "site",
+          verified_by: null,
+          status: "pending"
+        }
+      ]).select("id");
+
+      if (insertErr) {
+        setError(insertErr.message || "DB error");
+        setSubmitting(false);
+        return;
+      }
+
+      onClose();
+      alert("Run submitted and pending verification.");
+    } catch (err) {
+      setError(err.message || String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="grid gap-3">
+      {error ? <div className="text-sm text-red-400">{error}</div> : null}
+      <input value={player} onChange={e=>setPlayer(e.target.value)} placeholder="Player" className="w-full rounded-xl bg-zinc-950/80 p-3" />
+      <input value={video} onChange={e=>setVideo(e.target.value)} placeholder="Video URL" className="w-full rounded-xl bg-zinc-950/80 p-3" />
+      <div className="grid sm:grid-cols-3 gap-3">
+        <input value={date} onChange={e=>setDate(e.target.value)} placeholder="Date" className="rounded-xl bg-zinc-950/80 p-3" />
+        <input value={browser} onChange={e=>setBrowser(e.target.value)} placeholder="Browser" className="rounded-xl bg-zinc-950/80 p-3" />
+        <input value={version} onChange={e=>setVersion(e.target.value)} placeholder="Version" className="rounded-xl bg-zinc-950/80 p-3" />
+      </div>
+      <input value={time} onChange={e=>setTime(e.target.value)} placeholder="Time (e.g. 2h42m57s or 42:57)" className="w-full rounded-xl bg-zinc-950/80 p-3" />
+      <textarea value={comment} onChange={e=>setComment(e.target.value)} placeholder="Comment (optional)" className="w-full rounded-xl bg-zinc-950/80 p-3 h-24" />
+      <div className="flex gap-3">
+        <button type="submit" disabled={submitting} className="inline-flex items-center justify-center rounded-2xl bg-yellow-400 px-5 py-3 text-sm font-bold text-black transition hover:bg-yellow-300">{submitting ? "Submitting..." : "Submit"}</button>
+        <button type="button" onClick={onClose} className="inline-flex items-center justify-center rounded-2xl border border-zinc-800 px-5 py-3 text-sm">Cancel</button>
+      </div>
+    </form>
   );
 }
